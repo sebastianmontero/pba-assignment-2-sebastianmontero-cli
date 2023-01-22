@@ -319,3 +319,15 @@ async fn get_tx_fee(sub_matches: &ArgMatches, api: &API) -> u32 {
 fn push_args() -> Vec<clap::Arg> {
     vec![arg!(-m --message <MESSAGE>)]
 }
+
+#[cfg(test)]
+mod tests {
+
+	use super::*;
+
+	#[test]
+	fn print_public_key_address() {
+		let key = sp_core::sr25519::Public([212, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125]);
+        println!("address: {}", key.to_ss58check());
+	}
+}
