@@ -1,21 +1,21 @@
 use dotenv::dotenv;
 use sp_application_crypto::Ss58Codec;
-use std::{ffi::OsString, iter::Product};
 use std::path::PathBuf;
+use std::{ffi::OsString, iter::Product};
 
 use clap::{arg, value_parser, Arg, ArgAction, ArgMatches, Command};
 
 mod api;
+mod db;
 mod error;
+mod key_store;
 mod rpc;
 mod types;
-mod db;
-mod key_store;
 
 use api::*;
-use rpc::*;
-use key_store::*;
 use db::*;
+use key_store::*;
+use rpc::*;
 
 #[tokio::main]
 async fn main() {
@@ -145,10 +145,9 @@ async fn run() -> Result<(), error::Error> {
             let mnemonic = sub_matches
                 .get_one::<String>("mnemonic")
                 .expect("mnemonic is required");
-                let key = api.keystore.add(mnemonic)?;
+            let key = api.keystore.add(mnemonic)?;
             println!("Adding account: {}", key.to_ss58check());
             db.add_account(&key.to_ss58check(), mnemonic)?;
-
         }
         Some(("get-min-fee", _)) => {
             let fee = api.get_min_fee().await?;
@@ -168,13 +167,19 @@ async fn run() -> Result<(), error::Error> {
             println!("Default Account: {}", db.get_default_account()?)
         }
         Some(("get-admin-account", _)) => {
-            println!("Admin Account: {}", api.keystore.add(&std::env::var("ADMIN_SEED")?)?.to_ss58check());
+            println!(
+                "Admin Account: {}",
+                api.keystore
+                    .add(&std::env::var("ADMIN_SEED")?)?
+                    .to_ss58check()
+            );
         }
         Some(("get-balance", sub_matches)) => {
             let account = get_operating_account(sub_matches, &db)?;
             println!(
                 "Balance for account: {} is: {}",
-                account, api.get_balance(&account).await?
+                account,
+                api.get_balance(&account).await?
             );
         }
         Some(("mint", sub_matches)) => {
@@ -184,11 +189,9 @@ async fn run() -> Result<(), error::Error> {
             let amount = *sub_matches
                 .get_one::<u128>("amount")
                 .expect("amount is required");
-            println!(
-                "Minting: {} tokens for account: {} ...",
-                amount, account
-            );
-            api.mint(account, amount).await?;
+            println!("Minting: {} tokens for account: {} ...", amount, account);
+            let result = api.mint(account, amount).await?;
+            println!("{}", result);
         }
         Some(("transfer", sub_matches)) => {
             let account = sub_matches
@@ -203,16 +206,14 @@ async fn run() -> Result<(), error::Error> {
                 "Transfering from {}  to {} amount: {} ...",
                 default_account, account, amount
             );
-            api.transfer(&mnemonic, account, amount, tx_fee).await?;
+            let result = api.transfer(&mnemonic, account, amount, tx_fee).await?;
+            println!("{}", result);
         }
         Some(("set-default-account", sub_matches)) => {
             let account = sub_matches
                 .get_one::<String>("account")
                 .expect("account is required");
-            println!(
-                "Setting account: {} as default ...",
-                account
-            );
+            println!("Setting account: {} as default ...", account);
             db.set_default_account(account)?;
         }
         Some(("set-min-fee", sub_matches)) => {
@@ -224,7 +225,8 @@ async fn run() -> Result<(), error::Error> {
                 "Setting minimum fee to: {}, tx fee: {} ...",
                 min_fee, tx_fee
             );
-            api.set_min_fee(min_fee, tx_fee).await?;
+            let result = api.set_min_fee(min_fee, tx_fee).await?;
+            println!("{}", result);
         }
         Some(("diff", sub_matches)) => {
             let color = sub_matches
@@ -296,9 +298,8 @@ async fn run() -> Result<(), error::Error> {
     // Continued program logic goes here...
 }
 
-fn get_operating_account(sub_matches: &ArgMatches, db: &DB) ->Result<String, error::Error> {
-    if let Some(account) = sub_matches
-    .get_one::<String>("account") {
+fn get_operating_account(sub_matches: &ArgMatches, db: &DB) -> Result<String, error::Error> {
+    if let Some(account) = sub_matches.get_one::<String>("account") {
         return Ok(account.to_owned());
     }
     let account = db.get_default_account()?;
@@ -323,11 +324,14 @@ fn push_args() -> Vec<clap::Arg> {
 #[cfg(test)]
 mod tests {
 
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn print_public_key_address() {
-		let key = sp_core::sr25519::Public([212, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133, 88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125]);
+    #[test]
+    fn print_public_key_address() {
+        let key = sp_core::sr25519::Public([
+            212, 53, 147, 199, 21, 253, 211, 28, 97, 20, 26, 189, 4, 169, 159, 214, 130, 44, 133,
+            88, 133, 76, 205, 227, 154, 86, 132, 231, 165, 109, 162, 125,
+        ]);
         println!("address: {}", key.to_ss58check());
-	}
+    }
 }

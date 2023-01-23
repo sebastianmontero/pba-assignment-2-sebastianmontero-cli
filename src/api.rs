@@ -1,3 +1,5 @@
+use jsonrpsee_core::Error::ParseError;
+
 use hex::FromHex;
 use parity_scale_codec::Decode;
 use parity_scale_codec::Encode;
@@ -57,7 +59,13 @@ impl API {
         Ok(result)
     }
 
-    pub async fn transfer(&self, from_mnemonic: &str, to_address: &str, amount: u128, tx_fee: u32) -> Result<String, Error> {
+    pub async fn transfer(
+        &self,
+        from_mnemonic: &str,
+        to_address: &str,
+        amount: u128,
+        tx_fee: u32,
+    ) -> Result<String, Error> {
         let from_key = self.keystore.add(from_mnemonic)?;
         let to_key = KeyStore::get_pub_key(to_address)?;
         let result = self
@@ -84,16 +92,36 @@ impl API {
             origin: key.0.to_vec(),
         };
         let ext = BasicExtrinsic::new(ext_payload, Some(signature)).unwrap();
-        println!("Encoded extrinsic: {:?}", HexDisplay::from(&ext.encode()));
+        // println!("Encoded extrinsic: {:?}", HexDisplay::from(&ext.encode()));
         let response = self.call_extrinsic(ext).await?;
         Ok(response)
     }
 
     async fn call_extrinsic(&self, ext: BasicExtrinsic) -> Result<String, Error> {
         let param = HexDisplay::from(&ext.encode()).to_string();
-        let response = self.rpc.request("author_submitExtrinsic", &param).await?;
-        if let Some(trx) = response {
-            return Ok(trx);
+        let mut subs = self
+            .rpc
+            .subscribe("author_submitAndWatchExtrinsic", &param)
+            .await?;
+        println!("Waiting for transaction result...");
+        while let Some(value) = subs.next().await {
+            // println!("Value: {:?}\n\n\n", value);
+            if let Err(outer_error) = value {
+                if let ParseError(err) = outer_error {
+                    if format!("{}", err).to_lowercase().contains("\"invalid\"") {
+                        return Err(Error::new("Extrinsic call failed, make sure you are paying the right amount of fees, and have enough balance to pay fees and to perform the operation"));
+                    }
+                } else {
+                    return Err(Error::new("Subscription error"));
+                }
+            } else if let Ok(map) = value {
+                if map.contains_key("inBlock") {
+                    return Ok(format!(
+                        "Tx included in block: {}",
+                        map.get("inBlock").unwrap()
+                    ));
+                }
+            }
         }
         Err(Error::new("No response"))
     }
